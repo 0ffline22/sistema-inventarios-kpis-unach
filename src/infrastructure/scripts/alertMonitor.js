@@ -1,5 +1,6 @@
 require('dotenv').config();
 const os = require('os');
+const fs = require('fs');
 const https = require('https');
 const { execSync } = require('child_process');
 const nodemailer = require('nodemailer');
@@ -64,6 +65,80 @@ const enviarGmail = async (asunto, cuerpoHtml) => {
   } catch (err) {
     console.error('Error Gmail:', err.message);
     return false;
+  }
+};
+
+// Función reutilizable para alertas de seguridad (Login fallido, SQLi, Sudo no autorizado)
+const notificarAlertaSeguridad = async (tipoEvento, descripcion, severidad = 'CRITICAL', ipOrigen = '127.0.0.1', usuarioId = null, evitarDuplicadosMinutos = 0) => {
+  try {
+    if (evitarDuplicadosMinutos > 0) {
+      const check = await pool.query(
+        `SELECT id FROM bitacora_eventos
+         WHERE tipo_evento = $1 AND descripcion = $2
+           AND creado_en > NOW() - ($3 || ' minutes')::INTERVAL`,
+        [tipoEvento, descripcion, evitarDuplicadosMinutos]
+      );
+      if (check.rows.length > 0) return false;
+    }
+
+    await pool.query(
+      `INSERT INTO bitacora_eventos (tipo_evento, descripcion, nivel_severidad, ip_origen, usuario_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [tipoEvento, descripcion, severidad, ipOrigen, usuarioId]
+    );
+
+    const icono = severidad === 'CRITICAL' ? '' : '';
+    const msgTelegram = `${icono} <b>ALERTA DE SEGURIDAD [${severidad}]</b>\n` +
+      `<b>Evento:</b> ${tipoEvento}\n` +
+      `<b>Detalle:</b> ${descripcion}\n` +
+      `<b>Origen / IP:</b> ${ipOrigen}\n` +
+      `<b>Servidor:</b> ${os.hostname()}\n` +
+      `<b>Fecha:</b> ${new Date().toLocaleString('es-MX')}`;
+
+    const colorBorde = severidad === 'CRITICAL' ? '#dc3545' : '#fd7e14';
+    const htmlGmail = `
+      <div style="font-family: Arial, sans-serif; border-left: 5px solid ${colorBorde}; padding: 15px; background: #fff9f9;">
+        <h2 style="color: ${colorBorde}; margin-top: 0;">${icono} Alerta de Seguridad [${severidad}]</h2>
+        <p><strong>Tipo de Incidente:</strong> ${tipoEvento}</p>
+        <p><strong>Descripción:</strong> ${descripcion}</p>
+        <p><strong>IP / Origen:</strong> ${ipOrigen}</p>
+        <p><strong>Servidor:</strong> ${os.hostname()}</p>
+        <p><strong>Fecha:</strong> ${new Date().toLocaleString('es-MX')}</p>
+      </div>
+    `;
+
+    await Promise.all([
+      enviarTelegram(msgTelegram),
+      enviarGmail(`${icono} [${severidad}] ${tipoEvento} - Seguridad UNACH`, htmlGmail)
+    ]);
+    return true;
+  } catch (err) {
+    console.error('Error en notificarAlertaSeguridad:', err.message);
+    return false;
+  }
+};
+
+// Vigilar intentos no autorizados de sudo en /var/log/auth.log
+const vigilarSudoNoAutorizado = async () => {
+  const authLogPath = '/var/log/auth.log';
+  try {
+    if (!fs.existsSync(authLogPath)) return;
+    const salida = execSync(`tail -n 60 ${authLogPath} | grep -E "NOT in sudoers|sudo:.*authentication failure|incorrect password attempts"`).toString().trim();
+    if (!salida) return;
+
+    const lineas = salida.split('\n');
+    for (const linea of lineas) {
+      // Extraer usuario y comando si están presentes
+      const userMatch = linea.match(/sudo:\s+([^\s:]+)/);
+      const cmdMatch = linea.match(/COMMAND=([^\s;]+.*)/);
+      const usuarioIntento = userMatch ? userMatch[1] : 'desconocido';
+      const comandoIntento = cmdMatch ? cmdMatch[1].trim() : 'privilegios root';
+      const detalle = `Intento no autorizado de SUDO por usuario '${usuarioIntento}' ejecutando: ${comandoIntento}`;
+
+      await notificarAlertaSeguridad('INTENTO_SUDO_NO_AUTORIZADO', detalle, 'CRITICAL', 'Local/SSH (auth.log)', null, 15);
+    }
+  } catch {
+    // grep devuelve código 1 cuando no hay coincidencias (comportamiento normal)
   }
 };
 
@@ -149,27 +224,27 @@ const recolectarTodosLosKpis = async () => {
 
 const notificarAlerta = async (tipoEvento, descripcion, severidad) => {
   const check = await pool.query(
-    `SELECT id FROM bitacora_eventos 
-     WHERE tipo_evento = $1 AND descripcion = $2 
+    `SELECT id FROM bitacora_eventos
+     WHERE tipo_evento = $1 AND descripcion = $2
        AND creado_en > NOW() - INTERVAL '10 minutes'`,
     [tipoEvento, descripcion]
   );
 
   if (check.rows.length === 0) {
     await pool.query(
-      `INSERT INTO bitacora_eventos (tipo_evento, descripcion, nivel_severidad, ip_origen, usuario_id) 
+      `INSERT INTO bitacora_eventos (tipo_evento, descripcion, nivel_severidad, ip_origen, usuario_id)
        VALUES ($1, $2, $3, $4, $5)`,
       [tipoEvento, descripcion, severidad, '127.0.0.1 (cron)', null]
     );
 
-    const msgTelegram = `🚨 <b>ALERTA DE SISTEMA [${severidad}]</b>\n` +
+    const msgTelegram = ` <b>ALERTA DE SISTEMA [${severidad}]</b>\n` +
       `<b>Tipo:</b> ${tipoEvento}\n` +
       `<b>Detalle:</b> ${descripcion}\n` +
       `<b>Fecha:</b> ${new Date().toLocaleString('es-MX')}`;
 
     const htmlGmail = `
       <div style="font-family: Arial, sans-serif; border-left: 5px solid #dc3545; padding: 15px;">
-        <h2 style="color: #dc3545; margin-top: 0;">🚨 Alerta de Sistema [${severidad}]</h2>
+        <h2 style="color: #dc3545; margin-top: 0;"> Alerta de Sistema [${severidad}]</h2>
         <p><strong>Evento:</strong> ${tipoEvento}</p>
         <p><strong>Descripción:</strong> ${descripcion}</p>
         <p><strong>Servidor:</strong> ${os.hostname()}</p>
@@ -179,7 +254,7 @@ const notificarAlerta = async (tipoEvento, descripcion, severidad) => {
 
     await Promise.all([
       enviarTelegram(msgTelegram),
-      enviarGmail(`🚨 [${severidad}] ${tipoEvento} - Servidor UNACH`, htmlGmail)
+      enviarGmail(` [${severidad}] ${tipoEvento} - Servidor UNACH`, htmlGmail)
     ]);
     console.log(`[${new Date().toISOString()}] Alerta enviada (TG+Gmail): ${tipoEvento}`);
   }
@@ -187,6 +262,10 @@ const notificarAlerta = async (tipoEvento, descripcion, severidad) => {
 
 const ejecutarRevisionAlertas = async () => {
   try {
+    // 1. Revisar intentos no autorizados de sudo en Linux
+    await vigilarSudoNoAutorizado();
+
+    // 2. Revisar KPIs de infraestructura e inventario
     const kpis = await recolectarTodosLosKpis();
 
     if (kpis.cpuUsage >= UMBRALES.CPU_MAX) {
@@ -219,25 +298,25 @@ const enviarReporteCompleto = async () => {
   const kpis = await recolectarTodosLosKpis();
 
   const listaStock = kpis.stockBajo.length > 0
-    ? kpis.stockBajo.map(p => `• [${p.codigo}] ${p.nombre}: ${p.stock}/${p.stock_minimo}`).join('\n')
-    : '• Todo el inventario en niveles óptimos';
+    ? kpis.stockBajo.map(p => ` [${p.codigo}] ${p.nombre}: ${p.stock}/${p.stock_minimo}`).join('\n')
+    : ' Todo el inventario en niveles óptimos';
 
   const reporteTg =
-    `📊 <b>REPORTE DE KPIs - SERVIDOR ${kpis.hostname.toUpperCase()}</b>\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `🖥 <b>CPU:</b> ${kpis.cpuUsage}% (Load avg: ${kpis.loadAvg1m})\n` +
-    `🧠 <b>RAM:</b> ${kpis.ramUsage}%\n` +
-    `💾 <b>Disco (/):</b> ${kpis.diskUsage}%\n` +
-    `⏱ <b>Uptime:</b> ${kpis.uptimeTexto}\n` +
-    `🔌 <b>Conexiones activas:</b> ${kpis.conexionesActivas}\n` +
-    `⚙️ <b>Servicios:</b> SSH [${kpis.servicios.ssh}] | Node [${kpis.servicios.api_node}] | PG [${kpis.servicios.postgresql_win}]\n` +
-    `📦 <b>Alertas Inventario:</b>\n${listaStock}\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `📅 ${new Date().toLocaleString('es-MX')}`;
+    ` <b>REPORTE DE KPIs - SERVIDOR ${kpis.hostname.toUpperCase()}</b>\n` +
+    `\n` +
+    ` <b>CPU:</b> ${kpis.cpuUsage}% (Load avg: ${kpis.loadAvg1m})\n` +
+    ` <b>RAM:</b> ${kpis.ramUsage}%\n` +
+    ` <b>Disco (/):</b> ${kpis.diskUsage}%\n` +
+    ` <b>Uptime:</b> ${kpis.uptimeTexto}\n` +
+    ` <b>Conexiones activas:</b> ${kpis.conexionesActivas}\n` +
+    ` <b>Servicios:</b> SSH [${kpis.servicios.ssh}] | Node [${kpis.servicios.api_node}] | PG [${kpis.servicios.postgresql_win}]\n` +
+    ` <b>Alertas Inventario:</b>\n${listaStock}\n` +
+    `\n` +
+    ` ${new Date().toLocaleString('es-MX')}`;
 
   const reporteHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
-      <h2 style="color: #0d6efd; border-bottom: 2px solid #0d6efd; padding-bottom: 8px;">📊 Reporte de KPIs - Servidor ${kpis.hostname}</h2>
+      <h2 style="color: #0d6efd; border-bottom: 2px solid #0d6efd; padding-bottom: 8px;"> Reporte de KPIs - Servidor ${kpis.hostname}</h2>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
         <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Uso de CPU:</strong></td><td>${kpis.cpuUsage}% (Load: ${kpis.loadAvg1m})</td></tr>
         <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Uso de RAM:</strong></td><td>${kpis.ramUsage}%</td></tr>
@@ -246,7 +325,7 @@ const enviarReporteCompleto = async () => {
         <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Conexiones Activas:</strong></td><td>${kpis.conexionesActivas}</td></tr>
         <tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Estado de Servicios:</strong></td><td>SSH: ${kpis.servicios.ssh} | Node: ${kpis.servicios.api_node} | PostgreSQL: ${kpis.servicios.postgresql_win}</td></tr>
       </table>
-      <h4>📦 Estado de Inventario (Propuesta KPI)</h4>
+      <h4> Estado de Inventario (Propuesta KPI)</h4>
       <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px;">${listaStock}</pre>
       <small style="color: #6c757d;">Generado automáticamente vía cron el ${new Date().toLocaleString('es-MX')}</small>
     </div>
@@ -254,7 +333,7 @@ const enviarReporteCompleto = async () => {
 
   await Promise.all([
     enviarTelegram(reporteTg),
-    enviarGmail(`📊 Reporte Periódico de KPIs - ${kpis.hostname}`, reporteHtml)
+    enviarGmail(` Reporte Periódico de KPIs - ${kpis.hostname}`, reporteHtml)
   ]);
 
   console.log(`[${new Date().toISOString()}] Reporte completo enviado a Telegram y Gmail.`);
@@ -268,4 +347,11 @@ if (require.main === module) {
   }
 }
 
-module.exports = { ejecutarRevisionAlertas, recolectarTodosLosKpis, enviarReporteCompleto, UMBRALES };
+module.exports = {
+  ejecutarRevisionAlertas,
+  recolectarTodosLosKpis,
+  enviarReporteCompleto,
+  notificarAlertaSeguridad,
+  vigilarSudoNoAutorizado,
+  UMBRALES
+};
