@@ -123,7 +123,7 @@ const vigilarSudoNoAutorizado = async () => {
   const authLogPath = '/var/log/auth.log';
   try {
     if (!fs.existsSync(authLogPath)) return;
-    const salida = execSync(`tail -n 60 ${authLogPath} | grep -E "NOT in sudoers|sudo:.*authentication failure|incorrect password attempts"`).toString().trim();
+    const salida = execSync(`tail -n 60 ${authLogPath} | grep -E "NOT in sudoers|authentication failure|incorrect password attempts|sudo:.*TTY="`).toString().trim();
     if (!salida) return;
 
     const lineas = salida.split('\n');
