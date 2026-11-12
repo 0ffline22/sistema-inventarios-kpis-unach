@@ -1,0 +1,19 @@
+{
+  "name": "inventario-unach",
+  "version": "1.0.0",
+  "description": "Sistema de Inventario con Monitoreo de KPIs UNACH",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "ejs": "^3.1.10",
+    "express": "^4.22.3",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^10.5.0",
+    "pg": "^8.23.1"
+  }
+}

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoreo Servidor KPI - UNACH</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Panel de Administración - Métricas de Servidor</h1>
+    <span class="badge" style="background: #28a745;">Rol: ADMINISTRADOR</span>
+  </header>
+
+  <main>
+    <h2>Estado en Tiempo Real (Ubuntu Multipass VM)</h2>
+    <p style="margin-bottom: 1.5rem; color: #666;">Métricas consumidas por la API REST del controlador AdminKPIController.</p>
+
+    <div class="card-grid">
+      <div class="card" style="border-left-color: #007bff;">
+        <h3>Uso de CPU</h3>
+        <div class="value">2.4 %</div>
+      </div>
+      <div class="card" style="border-left-color: #28a745;">
+        <h3>Memoria RAM</h3>
+        <div class="value">49.8 %</div>
+      </div>
+      <div class="card" style="border-left-color: #ffc107;">
+        <h3>Servicio PM2</h3>
+        <div class="value" style="color: green;">ONLINE</div>
+      </div>
+      <div class="card" style="border-left-color: #17a2b8;">
+        <h3>Nginx Proxy</h3>
+        <div class="value" style="color: green;">ACTIVO</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <!-- Barra de Navegación -->
+  <nav class="navbar navbar-dark bg-dark px-4">
+    <span class="navbar-brand fw-bold">📦 Sistema de Inventarios & KPIs - UNACH</span>
+    <div id="userInfo" class="d-none text-white d-flex align-items-center gap-3">
+      <span id="userBadge" class="badge bg-primary"></span>
+      <span id="userName"></span>
+      <button class="btn btn-outline-light btn-sm" onclick="logout()">Cerrar Sesión</button>
+    </div>
+  </nav>
+
+  <div class="container my-4">
+
+    <!-- SECCIÓN 1: FORMULARIO DE LOGIN -->
+    <div id="loginSection" class="row justify-content-center mt-5">
+      <div class="col-md-5">
+        <div class="card shadow-sm">
+          <div class="card-header bg-primary text-white text-center fw-bold">
+            Iniciar Sesión
+          </div>
+          <div class="card-body p-4">
+            <div id="loginAlert" class="alert alert-danger d-none"></div>
+            <form id="loginForm">
+              <div class="mb-3">
+                <label class="form-label">Correo Institucional</label>
+                <input type="email" id="email" class="form-control" placeholder="admin@unach.mx" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Contraseña</label>
+                <input type="password" id="password" class="form-control" placeholder="••••••••" required>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN 2: DASHBOARD PRINCIPAL -->
+    <div id="dashboardSection" class="d-none">
+
+      <!-- PANEL EXCLUSIVO ADMINISTRADOR: KPIs DEL SERVIDOR EN TIEMPO REAL -->
+      <div id="adminKpiPanel" class="d-none mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="fw-bold mb-0">📊 Telemetría del Servidor (<span id="serverHost">vm1</span>)</h5>
+            <span class="badge bg-success">EN VIVO (2s)</span>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" onclick="guardarSnapshotKpis()">Guardar Snapshot en BD</button>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-3">
+            <div class="card border-primary shadow-sm text-center p-3 h-100">
+              <small class="text-muted fw-bold">USO DE CPU</small>
+              <h2 id="kpiCpu" class="text-primary mb-0 my-auto">--%</h2>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card border-success shadow-sm text-center p-3 h-100">
+              <small class="text-muted fw-bold">USO DE MEMORIA RAM</small>
+              <h2 id="kpiRam" class="text-success mb-0 my-auto">--%</h2>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card border-warning shadow-sm text-center p-3 h-100">
+              <small class="text-muted fw-bold">USO DE DISCO (/)</small>
+              <h2 id="kpiDisk" class="text-warning mb-0 my-auto">--%</h2>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card border-info shadow-sm text-center p-3 h-100">
+              <small class="text-muted fw-bold">RED (<span id="kpiNetIface">eth0</span>)</small>
+              <h5 id="kpiNetSpeed" class="text-info fw-bold mb-1 mt-1">↓ 0.00 KB/s | ↑ 0.00 KB/s</h5>
+              <small id="kpiNetTotal" class="text-muted">Total: ↓ 0.00 MB | ↑ 0.00 MB</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GESTIÓN DE INVENTARIO (ADMINISTRADOR Y OPERADOR) -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h5 class="fw-bold mb-0">📋 Catálogo de Productos</h5>
+          <button id="btnNuevoProducto" class="btn btn-success btn-sm d-none" data-bs-toggle="modal" data-bs-target="#modalProducto">
+            + Nuevo Producto
+          </button>
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Stock</th>
+                <th>Mínimo</th>
+                <th>Estado</th>
+                <th id="colAcciones" class="d-none">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaProductos"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PANEL EXCLUSIVO ADMINISTRADOR: BITÁCORA DE AUDITORÍA -->
+      <div id="adminBitacoraPanel" class="card shadow-sm d-none">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <h6 class="fw-bold mb-0">🛡️ Bitácora de Auditoría y Seguridad</h6>
+          <button class="btn btn-sm btn-outline-light" onclick="cargarBitacora()">Refrescar Logs</button>
+        </div>
+        <div class="card-body table-responsive" style="max-height: 300px;">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Evento</th>
+                <th>Descripción</th>
+                <th>Severidad</th>
+                <th>IP</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody id="tablaBitacora"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL AGREGAR PRODUCTO (SOLO ADMINISTRADOR) -->
+  <div class="modal fade" id="modalProducto" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Registrar Producto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="formProducto">
+          <div class="modal-body">
+            <div class="mb-2">
+              <label class="form-label">Código</label>
+              <input type="text" id="prodCodigo" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Nombre</label>
+              <input type="text" id="prodNombre" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Categoría</label>
+              <input type="text" id="prodCategoria" class="form-control" value="Cómputo">
+            </div>
+            <div class="row">
+              <div class="col-6 mb-2">
+                <label class="form-label">Stock Inicial</label>
+                <input type="number" id="prodStock" class="form-control" required>
+              </div>
+              <div class="col-6 mb-2">
+                <label class="form-label">Stock Mínimo</label>
+                <input type="number" id="prodMinimo" class="form-control" required>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let token = localStorage.getItem('token');
+    let usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+    let kpiInterval = null;
+
+    if (token && usuario) {
+      mostrarDashboard();
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const alertBox = document.getElementById('loginAlert');
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alertBox.textContent = data.error || 'Error al iniciar sesión';
+        alertBox.classList.remove('d-none');
+        return;
+      }
+
+      token = data.token;
+      usuario = data.usuario;
+      localStorage.setItem('token', token);
+      localStorage.setItem('usuario', JSON.stringify(usuario));
+      alertBox.classList.add('d-none');
+      mostrarDashboard();
+    });
+
+    function mostrarDashboard() {
+      document.getElementById('loginSection').classList.add('d-none');
+      document.getElementById('dashboardSection').classList.remove('d-none');
+      document.getElementById('userInfo').classList.remove('d-none');
+      document.getElementById('userBadge').textContent = usuario.rol;
+      document.getElementById('userName').textContent = usuario.nombre;
+
+      const esAdmin = usuario.rol === 'ADMINISTRADOR';
+      document.getElementById('adminKpiPanel').classList.toggle('d-none', !esAdmin);
+      document.getElementById('adminBitacoraPanel').classList.toggle('d-none', !esAdmin);
+      document.getElementById('btnNuevoProducto').classList.toggle('d-none', !esAdmin);
+      document.getElementById('colAcciones').classList.toggle('d-none', !esAdmin);
+
+      cargarProductos();
+      if (esAdmin) {
+        guardarSnapshotKpis();
+        cargarBitacora();
+        if (kpiInterval) clearInterval(kpiInterval);
+        kpiInterval = setInterval(cargarKpisEnVivo, 2000);
+      }
+    }
+
+    function actualizarTarjetasKpi(data) {
+      document.getElementById('serverHost').textContent = data.servidor;
+      document.getElementById('kpiCpu').textContent = `${data.lectura_actual.cpu_usage}%`;
+      document.getElementById('kpiRam').textContent = `${data.lectura_actual.ram_usage}%`;
+      document.getElementById('kpiDisk').textContent = `${data.lectura_actual.disk_usage}%`;
+      if (data.red) {
+        document.getElementById('kpiNetIface').textContent = data.red.interfaz;
+        document.getElementById('kpiNetSpeed').textContent = `↓ ${data.red.rx_kbps} KB/s | ↑ ${data.red.tx_kbps} KB/s`;
+        document.getElementById('kpiNetTotal').textContent = `Total: ↓ ${data.red.rx_mb} MB | ↑ ${data.red.tx_mb} MB`;
+      }
+    }
+
+    async function cargarKpisEnVivo() {
+      try {
+        const res = await fetch('/api/admin/kpis/live', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        actualizarTarjetasKpi(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function guardarSnapshotKpis() {
+      const res = await fetch('/api/admin/kpis', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      actualizarTarjetasKpi(data);
+      cargarBitacora();
+    }
+
+    async function cargarProductos() {
+      const res = await fetch('/api/productos', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401 || res.status === 403) return logout();
+
+      const productos = await res.json();
+      const tbody = document.getElementById('tablaProductos');
+      const esAdmin = usuario.rol === 'ADMINISTRADOR';
+
+      tbody.innerHTML = productos.map(p => {
+        const alerta = p.stock <= p.stock_minimo
+          ? '<span class="badge bg-danger">Stock Bajo</span>'
+          : '<span class="badge bg-success">Óptimo</span>';
+
+        const acciones = esAdmin
+          ? `<td><button class="btn btn-sm btn-outline-danger" onclick="eliminarProducto(${p.id})">Eliminar</button></td>`
+          : '';
+
+        return `
+          <tr>
+            <td class="fw-bold">${p.codigo}</td>
+            <td>${p.nombre}</td>
+            <td>${p.categoria}</td>
+            <td>${p.stock}</td>
+            <td>${p.stock_minimo}</td>
+            <td>${alerta}</td>
+            ${acciones}
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function cargarBitacora() {
+      const res = await fetch('/api/admin/bitacora', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return;
+      const logs = await res.json();
+      document.getElementById('tablaBitacora').innerHTML = logs.map(l => `
+        <tr>
+          <td>${l.id}</td>
+          <td><span class="badge ${l.nivel_severidad === 'WARNING' ? 'bg-warning text-dark' : 'bg-info text-dark'}">${l.tipo_evento}</span></td>
+          <td>${l.descripcion}</td>
+          <td>${l.nivel_severidad}</td>
+          <td>${l.ip_origen}</td>
+          <td>${new Date(l.creado_en).toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('formProducto').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        codigo: document.getElementById('prodCodigo').value,
+        nombre: document.getElementById('prodNombre').value,
+        categoria: document.getElementById('prodCategoria').value,
+        stock: document.getElementById('prodStock').value,
+        stock_minimo: document.getElementById('prodMinimo').value
+      };
+
+      const res = await fetch('/api/productos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('modalProducto')).hide();
+        document.getElementById('formProducto').reset();
+        cargarProductos();
+        cargarBitacora();
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    });
+
+    async function eliminarProducto(id) {
+      if (!confirm('¿Eliminar este producto del inventario?')) return;
+      const res = await fetch(`/api/productos/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        cargarProductos();
+        cargarBitacora();
+      }
+    }
+
+    function logout() {
+      if (kpiInterval) clearInterval(kpiInterval);
+      localStorage.removeItem('token');
+      localStorage.removeItem('usuario');
+      location.reload();
+    }
+  </script>
+</body>
+</html>
